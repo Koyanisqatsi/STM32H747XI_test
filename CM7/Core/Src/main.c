@@ -52,7 +52,7 @@ DCMI_HandleTypeDef hdcmi;
 DMA_HandleTypeDef hdma_dcmi;
 
 /* USER CODE BEGIN PV */
-
+float cam_frames_per_second;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -306,6 +306,9 @@ void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 
 void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
+	static uint32_t last_frame;
+	cam_frames_per_second = 1000.0/((float)(HAL_GetTick() - last_frame));
+	last_frame = HAL_GetTick();
 }
 
 
