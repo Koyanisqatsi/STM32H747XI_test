@@ -37,8 +37,8 @@
 #define HSEM_ID_0 (0U) /* HW semaphore 0*/
 #endif
 
-#define FRAME_Address			((uint32_t)0x24000000)
-#define FRAME_BufferSize	55296 // 384*288*2/4
+#define FRAME_Address		((uint32_t)0x24000000)
+#define FRAME_BufferSize	110592
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -51,8 +51,16 @@
 DCMI_HandleTypeDef hdcmi;
 DMA_HandleTypeDef hdma_dcmi;
 
+TIM_HandleTypeDef htim14;
+
+UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_rx;
+
 /* USER CODE BEGIN PV */
-float cam_frames_per_second;
+//float cam_frames_per_second;
+//float cam_lines_per_second;
+uint64_t inter_frames, inter_lines, inter_vsync;
+uint64_t utick;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,11 +68,16 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_DCMI_Init(void);
+static void MX_TIM14_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi);
 void DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi);
 void DCMI_VsyncEventCallback(DCMI_HandleTypeDef *hdcmi);
 void DCMI_ErrorCallback(DCMI_HandleTypeDef *hdcmi);
+
+uint64_t Get_uTick(void);
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -131,7 +144,11 @@ Error_Handler();
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_DCMI_Init();
+  MX_TIM14_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+	HAL_DCMI_RegisterCallback(&hdcmi, HAL_DCMI_LINE_EVENT_CB_ID, HAL_DCMI_LineEventCallback);
+	HAL_TIM_Base_Start_IT(&htim14);
 	HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS, FRAME_Address, FRAME_BufferSize);
   /* USER CODE END 2 */
 
@@ -158,7 +175,7 @@ void SystemClock_Config(void)
 
   /** Supply configuration update enable
   */
-  HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
+  HAL_PWREx_ConfigSupply(PWR_DIRECT_SMPS_SUPPLY);
   /** Configure the main internal regulator output voltage
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
@@ -256,6 +273,99 @@ static void MX_DCMI_Init(void)
 }
 
 /**
+  * @brief TIM14 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM14_Init(void)
+{
+
+  /* USER CODE BEGIN TIM14_Init 0 */
+
+  /* USER CODE END TIM14_Init 0 */
+
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM14_Init 1 */
+
+  /* USER CODE END TIM14_Init 1 */
+  htim14.Instance = TIM14;
+  htim14.Init.Prescaler = 119;
+  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim14.Init.Period = 999;
+  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim14) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim14, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM14_Init 2 */
+
+  /* USER CODE END TIM14_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -268,6 +378,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 
 }
 
@@ -301,23 +414,42 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_DCMI_LineEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
- 
+	static uint64_t last_line;
+	inter_lines = (Get_uTick() - last_line);
+	//cam_lines_per_second = 1000000/((float)(Get_uTick() - last_line));
+	last_line = Get_uTick();
 }
 
 void HAL_DCMI_FrameEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
-	static uint32_t last_frame;
-	cam_frames_per_second = 1000.0/((float)(HAL_GetTick() - last_frame));
-	last_frame = HAL_GetTick();
+	static uint64_t last_frame;
+	inter_frames = (Get_uTick() - last_frame);
+	//cam_frames_per_second = 1000/((float)(HAL_GetTick() - last_frame));
+	last_frame = Get_uTick();
 }
 
 
 void HAL_DCMI_VsyncEventCallback(DCMI_HandleTypeDef *hdcmi)
 {
+	static uint64_t last_vsync;
+	inter_vsync = (Get_uTick() - last_vsync);
+	//cam_frames_per_second = 1000/((float)(HAL_GetTick() - last_frame));
+	last_vsync = Get_uTick();
 }
 
 void HAL_DCMI_ErrorCallback(DCMI_HandleTypeDef *hdcmi)
 {
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if(htim == &htim14){
+	  utick = utick + htim14.Instance->ARR;
+  }
+}
+
+uint64_t Get_uTick(void){
+	return (utick + htim14.Instance->ARR);
 }
 /* USER CODE END 4 */
 
